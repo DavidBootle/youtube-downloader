@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/TheWeirdSquid/youtube-downloader/issues"
   },
-  "homepage": "https://github.com/TheWeirdSquid/youtube-downloader#readme"
+  "homepage": "https://github.com/TheWeirdSquid/youtube-downloader#readme",
+  "dependencies": {
+    "express": "^4.17.1"
+  }
 }
