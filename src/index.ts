@@ -18,7 +18,12 @@ app.get( "/", (req, res) => {
 
 app.get( "/convertomp3", (req, res) => {
     res.sendFile(path.join(__dirname, '../html/convertomp3.html'));
-})
+});
+
+// ping method
+app.get( "/api/ping", (req, res) => {
+    res.sendStatus(200);
+});
 
 /* UTILITIES */
 type MP3ConvertInfo = {
