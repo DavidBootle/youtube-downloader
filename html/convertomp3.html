@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Convert to MP3 - Youtube Downloader | Bootle Tools</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <!-- IMPORTS -->
+        <link href="/static/bootstrap/bootstrap.min.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/bootstrap/bootstrap.min.js" type="text/javascript"></script>
+        <link href="/static/bootstrap/bootstrap-utilities.min.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/jquery/jquery-3.6.0.min.js" type="text/javascript"></script>
+        <link href="/static/sticky-footer.css" rel="stylesheet" type="text/css"/>
+        <link href="/static/global-styles.css" rel="stylesheet" type="text/css"/>
+    </head>
+    <body>
+        <nav class="navbar navbar-dark bg-red bg-gradient">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1">Youtube Downloader</span>
+            </div>
+        </nav>
+
+        <div class="container-lg d-flex flex-column align-items-center justify-content-lg-center centered-container">
+            <h1 id="starting-text" class="mb-3">Download Starting...</h1>
+            <h1 id="status-text" class="mb-3" style="display:none">Downloading... (<span id="downloadPercentage">0</span>%)</h1>
+            <div class="progress w-100" id="progress-bar-container">
+                <div class="progress-bar" id="downloadProgress" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <a class="btn btn-danger btn-lg mt-4" href="" target="_blank" style="display:none" id="download-button" download>Save</a>
+        </div>
+
+        <footer class="footer">
+            <div class="container-fluid text-center">
+                <span class="text-muted">© 2021 <b>David Bootle</b> | <a href="https://github.com/TheWeirdSquid/youtube-downloader" target="_blank" title="Visit this project's Github repository"><img src="/static/github.png" width=16 height=16 style="vertical-align: text-bottom"></a></span>
+            </div>
+        </footer>
+
+        <script>
+            let started = false;
+            let convertingPrev = false;
+            let finishedPrev = false;
+            let errorPrev = false;
+
+            var getUrlParameter = function getUrlParameter(sParam) {
+                var sPageURL = window.location.search.substring(1),
+                    sURLVariables = sPageURL.split('&'),
+                    sParameterName,
+                    i;
+
+                for (i = 0; i < sURLVariables.length; i++) {
+                    sParameterName = sURLVariables[i].split('=');
+
+                    if (sParameterName[0] === sParam) {
+                        return typeof sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
+                    }
+                }
+                return false;
+            };
+
+            function setProgress(progress) {
+                $('#startingText').hide();
+                $('#downloadProgress').width(`${progress}%`);
+                $('#downloadPercentage').text(progress.toString());
+            }
+
+            function setConverting() {
+                setProgress(100);
+                $('#status-text').text('Converting...');
+                convertingPrev = true;
+            }
+
+            function setFinished() {
+                $('#status-text').text('Completed');
+                $('#progress-bar-container').hide();
+                finishedPrev = true;
+                $('#download-button').show();
+                $('#download-button').attr('href', `/api/download/mp3?token=${getUrlParameter('token')}`);
+            }
+
+            function setError() {
+                $('#status-text').text('Error');
+                $('#progress-bar-container').hide();
+                errorPrev = true;
+            }
+
+            let interval = setInterval(async () => {
+                const response = await fetch(`/api/status/mp3?token=${getUrlParameter('token')}`);
+                if (!response.ok) {
+                    console.log('Something went wrong!');
+                    console.log(response.status, await response.text());
+                    return;
+                }
+                const data = await response.json();
+                const { progress, converting, finished, error } = data;
+
+                if (progress != 0 && !started) {
+                    $('#starting-text').hide();
+                    $('#status-text').show();
+                    started = true;
+                }
+                
+                if (!converting) {
+                    setProgress(progress);
+                }
+
+                if (!convertingPrev && converting) {
+                    setConverting();
+                }
+
+                if (!finishedPrev && finished) {
+                    clearInterval(interval);
+                    setFinished();
+                }
+
+                if (!errorPrev && error) {
+                    clearInterval(interval);
+                    setError();
+                }
+
+            }, 1000);
+            $('#urlText').text(getUrlParameter('token'));
+        </script>
+    </body>
+</html>

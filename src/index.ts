@@ -16,6 +16,10 @@ app.get( "/", (req, res) => {
     res.sendFile(path.join(__dirname, '../html/index.html'));
 });
 
+app.get( "/convertomp3", (req, res) => {
+    res.sendFile(path.join(__dirname, '../html/convertomp3.html'));
+})
+
 /* UTILITIES */
 type MP3ConvertInfo = {
     downloadPath: string,
