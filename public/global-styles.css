@@ -7,7 +7,7 @@ html, body {
 }
 
 .centered-container {
-    height: calc(100% - 80px);
+    height: calc(100% - 120px);
 }
 
 .no-height {

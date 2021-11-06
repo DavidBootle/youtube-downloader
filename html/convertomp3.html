@@ -11,6 +11,7 @@
         <script src="/static/jquery/jquery-3.6.0.min.js" type="text/javascript"></script>
         <link href="/static/sticky-footer.css" rel="stylesheet" type="text/css"/>
         <link href="/static/global-styles.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/filesaver/FileSaver.min.js" type="text/javascript"></script>
     </head>
     <body>
         <nav class="navbar navbar-dark bg-red bg-gradient">
@@ -19,13 +20,23 @@
             </div>
         </nav>
 
-        <div class="container-lg d-flex flex-column align-items-center justify-content-lg-center centered-container">
-            <h1 id="starting-text" class="mb-3">Download Starting...</h1>
+        <div class="container-lg d-flex flex-column align-items-center justify-content-lg-center centered-container text-center">
+            <div class="py-4 py-0-lg"></div>
+            <img id="errorIcon" src="/static/error-icon.svg" width=50 height=50 class="mb-2" style="display:none"/>
+            <h1 id="starting-text" class="mb-3">Starting Download</h1>
             <h1 id="status-text" class="mb-3" style="display:none">Downloading... (<span id="downloadPercentage">0</span>%)</h1>
-            <div class="progress w-100" id="progress-bar-container">
+            <p id="starting-subtext">This could take a bit...</p>
+            <div class="progress w-100" id="progress-bar-container" style="display:none">
                 <div class="progress-bar" id="downloadProgress" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
             </div>
-            <a class="btn btn-danger btn-lg mt-4" href="" target="_blank" style="display:none" id="download-button" download>Save</a>
+            <div id="buttonContainer" class="row g-3">
+                <div class="col" style="display:none" id="download-button">
+                    <button class="btn btn-danger btn-lg">Save</button>
+                </div>
+                <div class="col" style="display:none" id="back-button">
+                    <a class="btn btn-secondary btn-lg" href="/">Back</a>
+                </div>
+            </div>
         </div>
 
         <footer class="footer">
@@ -56,46 +67,82 @@
                 return false;
             };
 
+            const debug = (getUrlParameter('debug') == 'true');
+
             function setProgress(progress) {
                 $('#startingText').hide();
                 $('#downloadProgress').width(`${progress}%`);
                 $('#downloadPercentage').text(progress.toString());
             }
 
+            function setDownloading() {
+                $('#starting-text').hide();
+                $('#starting-subtext').hide();
+                $('#status-text').show();
+                $('#progress-bar-container').show();
+                started = true;
+            }
+
             function setConverting() {
                 setProgress(100);
-                $('#status-text').text('Converting...');
+                $('#starting-subtext').show();
+                $('#status-text').text('Converting');
+                $('#status-text').removeClass('mb-3');
+                $('#status-text').addClass('mb-1');
                 convertingPrev = true;
             }
 
             function setFinished() {
                 $('#status-text').text('Completed');
                 $('#progress-bar-container').hide();
+                $('#starting-subtext').hide();
                 finishedPrev = true;
                 $('#download-button').show();
-                $('#download-button').attr('href', `/api/download/mp3?token=${getUrlParameter('token')}`);
+                $('#back-button').show();
+                $('#status-text').removeClass('mb-1');
+                $('#status-text').addClass('mb-3');
             }
 
-            function setError() {
-                $('#status-text').text('Error');
+            function setError(message) {
+                $('#errorIcon').show();
+                $('#starting-text').hide();
+                $('#status-text').show();
+                $('#status-text').text('Something Went Wrong');
+                if (message) {
+                    $('#starting-subtext').show();
+                    $('#starting-subtext').text(message);
+                } else {
+                    $('#starting-subtext').hide();
+                }
                 $('#progress-bar-container').hide();
+                $('#download-button').hide();
+                $('#back-button').show();
                 errorPrev = true;
             }
 
             let interval = setInterval(async () => {
                 const response = await fetch(`/api/status/mp3?token=${getUrlParameter('token')}`);
                 if (!response.ok) {
-                    console.log('Something went wrong!');
-                    console.log(response.status, await response.text());
-                    return;
+                    if (!errorPrev && !debug) {
+                        switch (response.status) {
+                            case 404:
+                                setError('Your session has expired. Please start a new download.');
+                                clearInterval(interval);
+                            default:
+                                console.log('Something went wrong!');
+                                console.log(response.status, await response.text());
+                        }
+                        return;
+                    }
+                    else {
+                        return;
+                    }
                 }
                 const data = await response.json();
                 const { progress, converting, finished, error } = data;
 
                 if (progress != 0 && !started) {
-                    $('#starting-text').hide();
-                    $('#status-text').show();
-                    started = true;
+                    setDownloading();
                 }
                 
                 if (!converting) {
@@ -113,11 +160,62 @@
 
                 if (!errorPrev && error) {
                     clearInterval(interval);
-                    setError();
+                    setError(data.errorMessage);
                 }
 
             }, 1000);
-            $('#urlText').text(getUrlParameter('token'));
+
+            $('#download-button').children('button').on('click', async function (event) {
+                const url = `/api/download/mp3?token=${getUrlParameter('token')}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    event.preventDefault();
+                    setError('Your download could not be fetched from the server.');
+                    return false;
+                } else {
+                    const data = await response.blob();
+                    saveAs(data, 'ytvideo.mp3');
+                }
+            });
+            
+            // debug
+            const state = getUrlParameter('state');
+
+            if (debug) {
+                switch (state) {
+                    case 'starting':
+                        break;
+                    case 'downloading':
+                        setDownloading();
+                        let progress = getUrlParameter('progress');
+                        if (progress) {
+                            progress = parseInt(progress);
+                            if (progress > 100) { progress = 100 }
+                            if (progress < 0) { progress = 0 }
+                            setProgress(progress);
+                        }
+                        break;
+                    case 'converting':
+                        setDownloading();
+                        setConverting();
+                        break;
+                    case 'finished':
+                        setDownloading();
+                        setConverting();
+                        setFinished();
+                        break;
+                    case 'error':
+                        let message = getUrlParameter('message');
+                        if (message) {
+                            setError(message);
+                        } else {
+                            setError();
+                        }
+                        break;
+                    default:
+                        console.log("Invalid debug state! Use 'starting', 'downloading', 'converting', 'finished' or 'error'!");
+                }
+            }
         </script>
     </body>
 </html>
