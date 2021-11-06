@@ -4,7 +4,6 @@ import ffmpeg from 'ffmpeg';
 import ytdl from 'ytdl-core';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
-import fspromise from 'fs/promises';
 
 const app = express();
 const port = process.env.PORT || 8002;
@@ -36,11 +35,8 @@ type MP3ConvertInfo = {
     errorMessage: string,
 }
 let downloadsMP3 = new Map<string, MP3ConvertInfo>();
-async function unlinkPath(path: string) {
-    try {
-        fspromise.unlink(path);
-    }
-    catch {}
+function unlinkPath(path: string) {
+    fs.unlink(path, (err) => {});
 }
 
 /**
