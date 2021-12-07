@@ -24,9 +24,14 @@
             <h5 class="display-5">Paste link here:</h5>
             <input class="form-control form-control-lg text-center" type="text" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ" aria-label="Youtube URL" id="urlInput">
             <div class="invalid-feedback text-center" id="urlFeedback">Must be a valid YouTube URL</div>
-            <div class="row mt-1 g-3">
-                <div class="col">
-                    <button class="btn btn-danger btn-lg" id="convertToMP3Button">Convert to MP3</button>
+            <div class="container-fluid">
+                <div class="row mt-1 g-3">
+                    <div class="col-6 text-end">
+                        <button class="btn btn-danger btn-lg" id="convertToMP3Button">Convert to MP3</button>
+                    </div>
+                    <div class="col-6 text-start">
+                        <button class="btn btn-danger btn-lg" id="convertToMP4Button">Convert to MP4</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -68,6 +73,16 @@
                 const token = data.token;
 
                 window.location = `/converttomp3?token=${encodeURIComponent(token)}`;
+            });
+
+            $('#convertToMP4Button').on('click', async function () {
+                let valid = await validateURL();
+                
+                if (!valid) { return; }
+
+                const url = $('#urlInput').val();
+
+                window.location = `/converttomp4?url=${encodeURIComponent(url)}`;
             });
         </script>
     </body>

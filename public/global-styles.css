@@ -15,3 +15,12 @@ html, body {
     margin: 0;
     padding: 0;
 }
+
+@media (min-width: 768px) {
+  .w-md-50 {
+    width: 50% !important;
+  }
+  .h-md-50 {
+    height: 50% !important;
+  }
+}

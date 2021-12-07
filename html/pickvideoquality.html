@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Convert to MP4 - Youtube Downloader | Bootle Tools</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <!-- IMPORTS -->
+        <link href="/static/bootstrap/bootstrap.min.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/bootstrap/bootstrap.min.js" type="text/javascript"></script>
+        <link href="/static/bootstrap/bootstrap-utilities.min.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/jquery/jquery-3.6.0.min.js" type="text/javascript"></script>
+        <link href="/static/sticky-footer.css" rel="stylesheet" type="text/css"/>
+        <link href="/static/global-styles.css" rel="stylesheet" type="text/css"/>
+        <script src="/static/filesaver/FileSaver.min.js" type="text/javascript"></script>
+    </head>
+    <body>
+        <nav class="navbar navbar-dark bg-red bg-gradient">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1">Youtube Downloader</span>
+            </div>
+        </nav>
+
+        <div class="container-lg d-flex flex-column align-items-center justify-content-lg-center centered-container text-center">
+            <div class="py-4 py-0-lg"></div>
+
+            <div id="containerLoading">
+                <h1>Loading Video Information</h1>
+                <div class="spinner-border my-4" style="width: 3rem; height: 3rem;" role="status"></div>
+                <p class="lead">This may take a second.</p>
+            </div>
+
+            <div id="containerQualitySelect" style="display:none">
+                <a href="#" id="thumbnailLink" target="_blank">
+                    <img id="thumbnailImage" class="img-fluid w-md-50" src="" alt="Video thumbnail"/>
+                </a>
+                <p class="lead mt-2"><b id="title">Video Title</b> by <b id="author">Video Author</b></p>
+                <div class="container">
+                    <div class="input-group">
+                        <select class="form-select" id="qualitySelect" aria-label="Select video quality.">
+                            <option value="INVALID" selected>Choose video quality...</option>
+                        </select>
+                        <button id="downloadButton" class="btn btn-danger" type="button">Download</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="containerError" style="display:none">
+                <img id="errorIcon" src="/static/error-icon.svg" width=50 height=50 class="mb-2"/>
+                <h1 id="error-text" class="mb-3">Something Went Wrong</h1>
+                <p id="error-subtext">Error details here</p>
+                <div id="error-button-container" class="row g-3">
+                    <div class="col" id="back-button">
+                        <a class="btn btn-secondary btn-lg" href="/">Back</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="container-fluid text-center">
+                <span class="text-muted">© 2021 <b>David Bootle</b> | <a href="https://github.com/TheWeirdSquid/youtube-downloader" target="_blank" title="Visit this project's Github repository"><img src="/static/github.png" width=16 height=16 style="vertical-align: text-bottom"></a></span>
+            </div>
+        </footer>
+
+        <script>
+            var getUrlParameter = function getUrlParameter(sParam) {
+                var sPageURL = window.location.search.substring(1),
+                    sURLVariables = sPageURL.split('&'),
+                    sParameterName,
+                    i;
+
+                for (i = 0; i < sURLVariables.length; i++) {
+                    sParameterName = sURLVariables[i].split('=');
+
+                    if (sParameterName[0] === sParam) {
+                        return typeof sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
+                    }
+                }
+                return false;
+            };
+
+            const debug = (getUrlParameter('debug') == 'true');
+
+            function setLoaded() {
+                $('#containerLoading').hide();
+                $('#containerQualitySelect').show();
+                $('#containerError').hide();
+            }
+
+            function setError(message) {
+                $('#containerLoading').hide();
+                $('#containerQualitySelect').hide();
+                $('#containerError').show();
+
+                if (message) {
+                    $('#error-subtext').show();
+                    $('#error-subtext').text(message);
+                } else {
+                    $('#error-subtext').hide();
+                }
+            }
+
+            const state = getUrlParameter('state');
+            let loadPage = true;
+            if (debug) {
+                switch (state) {
+                    case 'loading':
+                        loadPage = false;
+                        break;
+
+                    case 'select':
+                        setLoaded();
+                        break;
+
+                    case 'error':
+                        let message = getUrlParameter('message');
+                        if (message) {
+                            setError(message);
+                        } else {
+                            setError();
+                        }
+                        break;
+                    
+                    default:
+                        console.log("Invalid debug state! Use 'error' or 'select'!");
+                }
+            }
+
+            const vidUrl = getUrlParameter('url');
+            const response = fetch(`/api/info/video?url=${vidUrl}`).then(async (response) => {
+                if (response.status == 400) {
+                    setError();
+                    return;
+                }
+
+                const data = await response.json();
+                
+                const vidTitle = data.name;
+                const vidAuthor = data.author;
+                const thumbnailURL = data.thumbnailURL;
+                let formats = data.formats;
+                const linkUrl = data.url;
+
+                // set video information
+                $('#thumbnailLink').attr('href', linkUrl);
+                $('#thumbnailImage').attr('src', thumbnailURL);
+                $('#title').text(vidTitle);
+                $('#author').text(vidAuthor);
+
+                for (format of formats) {
+                    let newOption = $(`<option value="${format.quality}">${format.qualityLabel}</option>`);
+                    $('#qualitySelect').append(newOption);
+                }
+                
+                $('#thumbnailImage').on('load', function () {
+                    if (loadPage) { setLoaded(); }
+                });
+            });
+
+            $('#downloadButton').on('click', function() {
+                $('#qualitySelect').removeClass('is-invalid');
+                let quality = $('#qualitySelect').val();
+                if (quality == 'INVALID') {
+                    $('#qualitySelect').addClass('is-invalid');
+                    return;
+                }
+                window.location = `/converttomp4?url=${encodeURIComponent(vidUrl)}&quality=${quality}`
+            });
+        </script>
+    </body>
+</html>
