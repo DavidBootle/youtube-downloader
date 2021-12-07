@@ -16,7 +16,7 @@ app.get( "/", (req, res) => {
 });
 
 app.get( "/converttomp3", (req, res) => {
-    res.sendFile(path.join(__dirname, '../html/convertomp3.html'));
+    res.sendFile(path.join(__dirname, '../html/converttomp3.html'));
 });
 
 // ping method
