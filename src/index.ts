@@ -19,19 +19,11 @@ app.get( "/", (req, res) => {
 });
 
 app.get( "/converttomp3", (req, res) => {
-    const url = req.query.url;
-    if (!url) {
-        res.status(400).send('No youtube URL!'); // TODO: Replace with error page
-    }
     res.sendFile(path.join(__dirname, '../html/converttomp3.html'));
 });
 
 app.get( "/converttomp4", (req, res) => {
-    const url = req.query.url;
     const token = req.query.token;
-    if (!url && !token) {
-        res.status(400).send('No youtube URL!'); // TODO: Replace with error page
-    }
     if (!token) { res.sendFile(path.join(__dirname, '../html/pickvideoquality.html')); }
     else { res.sendFile(path.join(__dirname, '../html/converttomp4.html')); }
 });
