@@ -24,3 +24,13 @@ html, body {
     height: 50% !important;
   }
 }
+
+.loading-dots {
+    transition-property: opacity;
+    transition-duration: 0.5s;
+    display: inline-block;
+}
+
+.loading-dot-invisible {
+    opacity: 0;
+}

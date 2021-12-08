@@ -157,14 +157,23 @@
                 });
             });
 
-            $('#downloadButton').on('click', function() {
+            $('#downloadButton').on('click', async function() {
                 $('#qualitySelect').removeClass('is-invalid');
                 let quality = $('#qualitySelect').val();
                 if (quality == 'INVALID') {
                     $('#qualitySelect').addClass('is-invalid');
                     return;
                 }
-                window.location = `/converttomp4?url=${encodeURIComponent(vidUrl)}&quality=${quality}`
+                const url = `/api/convert/mp4?url=${encodeURIComponent(vidUrl)}&quality=${encodeURIComponent(quality)}`;
+                const response = await fetch(url);
+
+                if (response.status == 202) {
+                    const data = await response.json();
+                    const token = data.token;
+                    window.location = `/converttomp4?token=${token}`
+                } else {
+                    setError("The program isn't able to handle this type of video.");
+                }
             });
         </script>
     </body>

@@ -4,6 +4,7 @@ import ffmpeg from 'ffmpeg';
 import ytdl from 'ytdl-core';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
+import http from 'http';
 
 const app = express();
 const port = process.env.PORT || 8002;
@@ -27,11 +28,11 @@ app.get( "/converttomp3", (req, res) => {
 
 app.get( "/converttomp4", (req, res) => {
     const url = req.query.url;
-    const quality = req.query.quality;
-    if (!url) {
+    const token = req.query.token;
+    if (!url && !token) {
         res.status(400).send('No youtube URL!'); // TODO: Replace with error page
     }
-    if (!quality) { res.sendFile(path.join(__dirname, '../html/pickvideoquality.html')); }
+    if (!token) { res.sendFile(path.join(__dirname, '../html/pickvideoquality.html')); }
     else { res.sendFile(path.join(__dirname, '../html/converttomp4.html')); }
 });
 
@@ -50,7 +51,23 @@ type MP3ConvertInfo = {
     error: boolean,
     errorMessage: string,
 }
+type MP4ConvertInfo = {
+    videoDownloadPath: string,
+    audioDownloadPath: string,
+    outputPath: string,
+    videoTotalLength: number,
+    audioTotalLength: number,
+    videoDownloaded: number,
+    audioDownloaded: number,
+    progress: number,
+    convertingAudio: boolean,
+    convertingVideo: boolean,
+    finished: boolean,
+    error: boolean,
+    errorMessage: string,
+}
 let downloadsMP3 = new Map<string, MP3ConvertInfo>();
+let downloadsMP4 = new Map<string, MP4ConvertInfo>();
 function unlinkPath(path: string) {
     fs.unlink(path, (err) => {});
 }
@@ -104,6 +121,39 @@ app.get( "/api/status/mp3", async (req, res) => {
 });
 
 /**
+ * Gets the progress of an mp4 conversion
+ */
+ app.get( "/api/status/mp4", async (req, res) => {
+    const token: string = req.query.token as string;
+
+    if (!token) { res.status(400).send("'token' parameter is required."); return; }
+
+    let isValidToken = downloadsMP4.has(token);
+    if (!isValidToken) { res.status(404).send('Invalid token.'); return; }
+
+    let download = downloadsMP4.get(token);
+    
+    if (download.error) {
+        res.send({
+            'error': true,
+            'message': download.errorMessage
+        });
+        unlinkPath(download.videoDownloadPath);
+        unlinkPath(download.audioDownloadPath);
+        unlinkPath(download.outputPath);
+        downloadsMP4.delete(token);
+        return;
+    }
+
+    res.send({
+        'progress': download.progress,
+        'converting': download.convertingVideo && download.convertingAudio,
+        'finished': download.finished,
+        'error': false,
+    });
+});
+
+/**
  * Gets the download of an mp3 conversion
  */
 app.get( "/api/download/mp3", (req, res) => {
@@ -130,6 +180,38 @@ app.get( "/api/download/mp3", (req, res) => {
         unlinkPath(download.downloadPath);
         unlinkPath(download.audioPath);
         downloadsMP3.delete(token);
+    });
+});
+
+/**
+ * Gets the download of an mp3 conversion
+ */
+ app.get( "/api/download/mp4", (req, res) => {
+    const token: string = req.query.token as string;
+
+    if (!token) { res.status(400).send("'token' parameter is required."); return; }
+
+    let isValidToken = downloadsMP4.has(token);
+    if (!isValidToken) { res.status(404).send("Invalid token."); return; }
+
+    let download = downloadsMP4.get(token);
+
+    if (download.error) {
+        res.status(500).send(download.errorMessage);
+        unlinkPath(download.videoDownloadPath);
+        unlinkPath(download.audioDownloadPath);
+        unlinkPath(download.outputPath);
+        downloadsMP4.delete(token);
+        return;
+    }
+
+    if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
+
+    res.sendFile(download.outputPath, (err) => {
+        unlinkPath(download.videoDownloadPath);
+        unlinkPath(download.audioDownloadPath);
+        unlinkPath(download.outputPath);
+        downloadsMP4.delete(token);
     });
 });
 
@@ -210,76 +292,138 @@ app.get( "/api/convert/mp3", (req, res) => {
 /**
  * Starts converting a youtube video to mp4.
  */
-app.get( "/api/convert/mp4", (req, res) => {
-    const youtubeURL: string = req.query.url as string;
-    const quality: string = req.query.quality as string;
+app.get( "/api/convert/mp4", async (req, res) => {
+    const youtubeURL: string = decodeURIComponent(req.query.url as string);
+    const quality: string = decodeURIComponent(req.query.quality as string);
 
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
-    if (!youtubeURL) { res.status(400).send("'quality' parameter is required."); return; }
+    if (!quality) { res.status(400).send("'quality' parameter is required."); return; }
 
-    const downloadPath: string = `/tmp/${uuid()}.mp4`;
-    const audioPath: string = `/tmp/${uuid()}.mp3`;
+    const videoDownloadPath: string = `/tmp/${uuid()}.mp4`;
+    const audioDownloadPath: string = `/tmp/${uuid()}.mp4`;
+    const outputPath: string = `/tmp/${uuid()}.mp4`;
 
     if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
 
     const videoToken: string = uuid();
 
-    let download: MP3ConvertInfo = {
-        downloadPath,
-        audioPath,
+    let download: MP4ConvertInfo = {
+        videoDownloadPath,
+        audioDownloadPath,
+        outputPath,
+        videoTotalLength: null,
+        audioTotalLength: null,
+        videoDownloaded: null,
+        audioDownloaded: null,
         progress: 0,
-        converting: false,
+        convertingAudio: false,
+        convertingVideo: false,
         finished: false,
         error: false,
-        errorMessage: '',
+        errorMessage: ''
     }
-    downloadsMP3.set(videoToken, download);
+    downloadsMP4.set(videoToken, download);
     res.status(202).send({ 'token': videoToken });
 
     try {
-        let stream = fs.createWriteStream(download.downloadPath);
-        let video = ytdl(youtubeURL, { quality: 'highestaudio', filter: 'audioonly' });
-        let pipe = video.pipe(stream);
 
-        video.on('progress', (length: number, downloaded: number, totalLength: number) => {
-            let download = downloadsMP3.get(videoToken);
-            download.progress = Math.round((downloaded / totalLength) * 100);
-            downloadsMP3.set(videoToken, download);
+        let video = await ytdl(youtubeURL, { filter: format => format.quality == quality && format.container == 'mp4' });
+        let audio = await ytdl(youtubeURL, { quality: 'highestaudio' });
+
+        // get video pipe
+        let videoStream = fs.createWriteStream(download.videoDownloadPath);
+        let videoPipe = video.pipe(videoStream);
+
+        // get audio pipe
+        let audioStream = fs.createWriteStream(download.audioDownloadPath);
+        let audioPipe = audio.pipe(audioStream);
+
+        audio.on('progress', (length: number, downloaded: number, totalLength: number) => {
+            let download = downloadsMP4.get(videoToken);
+            if (!download.audioTotalLength) {
+                download.audioTotalLength = totalLength;
+            }
+            download.audioDownloaded = downloaded;
+
+            if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
+                let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
+                let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
+                download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+            }
+            downloadsMP4.set(videoToken, download);
         });
 
-        pipe.on('finish', async () => {
-            let download = downloadsMP3.get(videoToken);
-            download.converting = true;
-            downloadsMP3.set(videoToken, download);
+        video.on('progress', (length: number, downloaded: number, totalLength: number) => {
+            let download = downloadsMP4.get(videoToken);
+            if (!download.videoTotalLength) {
+                download.videoTotalLength = totalLength;
+            }
+            download.videoDownloaded = downloaded;
 
+            if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
+                let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
+                let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
+                download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+            }
+            downloadsMP4.set(videoToken, download);
+        });
+
+        async function combine() {
             try {
-                let download = downloadsMP3.get(videoToken);
-                let video = await new ffmpeg(download.downloadPath);
-                await video.fnExtractSoundToMP3(download.audioPath);
+                let download = downloadsMP4.get(videoToken);
+                let video = await new ffmpeg(download.videoDownloadPath);
+                video.addInput(download.audioDownloadPath);
+                video.addCommand('-c:v', 'copy');
+                video.addCommand('-c:a', 'aac');
+                let result = await video.save(download.outputPath);
                 download.finished = true;
-                downloadsMP3.set(videoToken, download);
+                downloadsMP4.set(videoToken, download);
                 setTimeout(() => {
-                    unlinkPath(download.downloadPath);
-                    unlinkPath(download.audioPath);
-                }, 10 * 60 * 1000); // remove both files in 10 minutes
+                    unlinkPath(download.videoDownloadPath);
+                    unlinkPath(download.audioDownloadPath);
+                    unlinkPath(download.outputPath);
+                }, 10 * 60 * 1000); // remove all files in 10 minutes
             } catch (err) {
-                let download = downloadsMP3.get(videoToken);
+                let download = downloadsMP4.get(videoToken);
                 download.error = true;
                 download.errorMessage = 'Something went wrong when converting the video.';
-                unlinkPath(download.downloadPath);
-                unlinkPath(download.audioPath);
-                downloadsMP3.set(videoToken, download);
+                unlinkPath(download.audioDownloadPath);
+                unlinkPath(download.videoDownloadPath);
+                unlinkPath(download.outputPath);
+                downloadsMP4.set(videoToken, download);
                 console.error(err);
+            }
+        }
+
+        audioPipe.on('finish', async () => {
+            audioPipe.close();
+            let download = downloadsMP4.get(videoToken);
+            download.convertingAudio = true;
+            downloadsMP4.set(videoToken, download);
+
+            if (download.convertingAudio && download.convertingVideo) {
+                combine();
+            }
+        });
+
+        videoPipe.on('finish', async () => {
+            videoPipe.close();
+            let download = downloadsMP4.get(videoToken);
+            download.convertingVideo = true;
+            downloadsMP4.set(videoToken, download);
+            if (download.convertingAudio && download.convertingVideo) {
+                combine();
             }
         });
     } catch (err) {
-        let download = downloadsMP3.get(videoToken);
+        let download = downloadsMP4.get(videoToken);
         download.error = true;
         download.errorMessage = 'Something went wrong when downloading the video.';
-        unlinkPath(download.downloadPath);
-        unlinkPath(download.audioPath);
-        downloadsMP3.set(videoToken, download);
-        console.error(err);
+        unlinkPath(download.audioDownloadPath);
+        unlinkPath(download.videoDownloadPath);
+        unlinkPath(download.outputPath);
+        downloadsMP4.set(videoToken, download);
+        throw err;
     }
 });
 
