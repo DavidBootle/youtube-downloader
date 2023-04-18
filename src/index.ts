@@ -454,7 +454,7 @@ app.get( "/api/info/video", async (req, res) => {
             let qualityAlreadyAdded = !validFormats.every(e => e.qualityLabel != format.qualityLabel); // will return true if this format's quality has already been added.
             if (!qualityAlreadyAdded) {
                 validFormats.push({
-                    quality: format.quality,
+                    quality: format.quality.toString(),
                     qualityLabel: format.qualityLabel
                 });
             }
