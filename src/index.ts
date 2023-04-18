@@ -4,7 +4,7 @@ import ffmpeg from 'ffmpeg';
 import ytdl from 'ytdl-core';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
-import http from 'http';
+require('dotenv');
 
 const app = express();
 const port = process.env.PORT || 8002;
@@ -215,8 +215,8 @@ app.get( "/api/convert/mp3", (req, res) => {
 
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
 
-    const downloadPath: string = `/tmp/${uuid()}.mp4`;
-    const audioPath: string = `/tmp/${uuid()}.mp3`;
+    const downloadPath: string = `/${process.env.YTDL_PATH}/${uuid()}.mp4`;
+    const audioPath: string = `/${process.env.YTDL_PATH}/${uuid()}.mp3`;
 
     if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
 
