@@ -117,6 +117,12 @@ function registerSocket(socket, debug) {
         socket.emit('register', {
             token: getUrlParameter('token'),
         });
+
+        // request latest information from the server
+        // the server will emit back the last event
+        socket.emit('update_request', {
+            token: getUrlParameter('token'),
+        });
     });
 
     // handle register_response from the server
@@ -134,6 +140,17 @@ function registerSocket(socket, debug) {
                     setError('Something went wrong! Please try again later.');
                 }
             }
+        }
+    });
+
+    // handle starting
+    // this should only be recieved if the client requests an update and the server has not send any progress updates
+    socket.on('starting', () => {
+        if (window.pageState != 'STARTING') {
+            window.pageState = 'STARTING';
+            $('#starting-text').show();
+            $('#status-text').hide();
+            $('#spinner-circle').show();
         }
     });
 

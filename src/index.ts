@@ -36,6 +36,11 @@ app.get( "/api/ping", (req, res) => {
 });
 
 /* UTILITIES */
+type SocketResponse = {
+    signal: string,
+    data: any
+}
+
 type MP3ConvertInfo = {
     downloadPath: string,
     audioPath: string,
@@ -44,6 +49,7 @@ type MP3ConvertInfo = {
     finished: boolean,
     error: boolean,
     errorMessage: string,
+    lastUpdate?: SocketResponse,
 }
 type MP4ConvertInfo = {
     videoDownloadPath: string,
@@ -59,6 +65,7 @@ type MP4ConvertInfo = {
     finished: boolean,
     error: boolean,
     errorMessage: string,
+    lastUpdate?: SocketResponse,
 }
 let downloadsMP3 = new Map<string, MP3ConvertInfo>();
 let downloadsMP4 = new Map<string, MP4ConvertInfo>();
@@ -71,6 +78,29 @@ type VideoQualityInfo = {
 }
 
 /** SOCKET.IO **/
+
+/**
+ * Wrapper for emitting a status update to connected sockets.
+ * @param token The token of the download
+ * @param signal The event string
+ * @param data A data object or nothing
+ */
+function status_update(token: string, signal: string, data: any) {
+    io.to(token).emit(signal, data);
+    
+    if (downloadsMP3.has(token)) {
+        // handle mp3
+        let download = downloadsMP3.get(token);
+        download.lastUpdate = { signal, data };
+        downloadsMP3.set(token, download);
+    } else if (downloadsMP4.has(token)) {
+        // handle mp4
+        let download = downloadsMP4.get(token);
+        download.lastUpdate = { signal, data };
+        downloadsMP4.set(token, download);
+    }
+}
+
 io.on("connection", (socket) => {
 
     // handle register event
@@ -87,6 +117,26 @@ io.on("connection", (socket) => {
             console.log('Registered new socket to token ' + data.token);
         } else {
             // if the token is invalid, inform the socket
+            socket.emit('register_response', {
+                'success': false,
+                'message': 'Invalid token.'
+            });
+        }
+    });
+
+    // handle update_request event
+    // clients will emit update_request when they want to get the latest progress of a download
+    socket.on('update_request', (data) => {
+        const { token } = data;
+        let tokenExists = downloadsMP3.has(token) || downloadsMP4.has(token);
+        if (tokenExists) {
+            let download = downloadsMP3.has(token) ? downloadsMP3.get(token) : downloadsMP4.get(token);
+            if (download.lastUpdate) {
+                socket.emit(download.lastUpdate.signal, download.lastUpdate.data);
+            } else {
+                socket.emit('starting');
+            }
+        } else {
             socket.emit('register_response', {
                 'success': false,
                 'message': 'Invalid token.'
@@ -275,6 +325,11 @@ app.get( "/api/convert/mp3", (req, res) => {
             let download = downloadsMP3.get(videoToken);
             download.progress = Math.round((downloaded / totalLength) * 100);
             downloadsMP3.set(videoToken, download);
+
+            // update connected clients with the state of the download
+            status_update(videoToken, 'downloading', {
+                progress: download.progress
+            });
         });
 
         pipe.on('finish', async () => {
@@ -282,16 +337,24 @@ app.get( "/api/convert/mp3", (req, res) => {
             download.converting = true;
             downloadsMP3.set(videoToken, download);
 
+            // inform connected clients that the download is finished and conversion has begun
+            status_update(videoToken, 'converting', {});
+
             try {
                 let download = downloadsMP3.get(videoToken);
                 let video = await new ffmpeg(download.downloadPath);
                 await video.fnExtractSoundToMP3(download.audioPath);
                 download.finished = true;
                 downloadsMP3.set(videoToken, download);
+
+                // inform connected clients that the download is complete
+                status_update(videoToken, 'finished', {});
+
                 setTimeout(() => {
                     unlinkPath(download.downloadPath);
                     unlinkPath(download.audioPath);
-                }, 10 * 60 * 1000); // remove both files in 10 minutes
+                    downloadsMP4.delete(videoToken);
+                }, parseInt(process.env.YTDL_CLEAR_AFTER_COMPLETE_TIME) * 1000 * 60); // remove both files in X minutes
             } catch (err) {
                 let download = downloadsMP3.get(videoToken);
                 download.error = true;
@@ -300,6 +363,11 @@ app.get( "/api/convert/mp3", (req, res) => {
                 unlinkPath(download.audioPath);
                 downloadsMP3.set(videoToken, download);
                 console.error(err);
+
+                // update connected clients
+                status_update(videoToken, 'download_error', {
+                    message: download.errorMessage
+                });
             }
         });
     } catch (err) {
@@ -310,6 +378,11 @@ app.get( "/api/convert/mp3", (req, res) => {
         unlinkPath(download.audioPath);
         downloadsMP3.set(videoToken, download);
         console.error(err);
+
+        // inform connected clients that the download has failed
+        status_update(videoToken, 'download_error', {
+            message: 'Something went wrong when downloading the video.'
+        });
     }
 });
 
@@ -380,7 +453,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
 
                 // update connected clients with the state of the download
-                io.to(videoToken).emit('downloading', {
+                status_update(videoToken, 'downloading', {
                     progress: download.progress
                 });
             }
@@ -401,7 +474,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
 
                 // update connected clients with the state of the download
-                io.to(videoToken).emit('downloading', {
+                status_update(videoToken, 'downloading', {
                     progress: download.progress
                 });
             }
@@ -420,7 +493,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 downloadsMP4.set(videoToken, download);
 
                 // inform connected clients that the download is complete
-                io.to(videoToken).emit('finished');
+                status_update(videoToken, 'finished', {});
 
                 // remove files after certain amount of time
                 setTimeout(() => {
@@ -438,6 +511,11 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 unlinkPath(download.outputPath);
                 downloadsMP4.set(videoToken, download);
                 console.error(err);
+
+                // update connected clients
+                status_update(videoToken, 'download_error', {
+                    message: download.errorMessage
+                });
             }
         }
 
@@ -449,7 +527,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
 
             if (download.convertingAudio && download.convertingVideo) {
                 // inform connected clients that the download is finished and conversion has begun
-                io.to(videoToken).emit('converting');
+                status_update(videoToken, 'converting', {});
                 combine();
             }
         });
@@ -461,7 +539,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
             downloadsMP4.set(videoToken, download);
             if (download.convertingAudio && download.convertingVideo) {
                 // inform connected clients that the download is finished and conversion has begun
-                io.to(videoToken).emit('converting');
+                status_update(videoToken, 'converting', {});
                 combine();
             }
         });
@@ -474,7 +552,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
         unlinkPath(download.outputPath);
         downloadsMP4.set(videoToken, download);
         // inform connected clients that the download has failed
-        io.to(videoToken).emit('download_error', {
+        status_update(videoToken, 'download_error', {
             message: 'Something went wrong when downloading the video.'
         });
     }
