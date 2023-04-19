@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Convert to MP4 - Youtube Downloader | Bootle Tools</title>
+        <title>Convert - Youtube Downloader | Bootle Tools</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <!-- IMPORTS -->
@@ -49,82 +49,25 @@
         </footer>
 
         <script>
+            const debug = (getUrlParameter('debug') == 'true');
+
             // valid page states:
             // STARTING, DOWNLOADING, CONVERTING, FINISHED, ERROR
-            let pageState = 'STARTING';
+            window.pageState = 'STARTING';
             let numOfLoadingDots = 3;
             const socket = io();
 
-            // handle socket connection
-            socket.on('connect', () => {
-                console.log('Connected to server!');
+            registerSocket(socket, debug);
 
-                // when socket connects, register with the server so that it can recieve progress updates
-                socket.emit('register', {
-                    type: 'mp4',
-                    token: getUrlParameter('token'),
-                });
-            });
+            // setup an interval to update the loading dots
+            let dotInterval = setInterval(() => {
+                numOfLoadingDots = updateLoadingDots(numOfLoadingDots);
+            }, 1000);
 
-            // handle register_response from the server
-            socket.on('register_response', (data) => {
-                if (data.success) {
-                    console.log('Registered with server!');
-                } else {
-                    console.log(`Failed to register with server. Reason: "${data.message}"`);
-                    if (data.message == 'Invalid token.') {
-                        setError('Your session has expired. Please start a new download.');
-                    } else {
-                        setError('Something went wrong! Please try again later.');
-                    }
-                }
-            });
-
-            // handle downloading update
-            socket.on('downloading', (data) => {
-                const { progress } = data;
-                if (pageState != 'DOWNLOADING') {
-                    pageState = 'DOWNLOADING';
-                    setDownloading();
-                }
-                setProgress(progress);
-            });
-
-            // handle converting update
-            socket.on('converting', () => {
-                if (pageState != 'CONVERTING') {
-                    pageState = 'CONVERTING';
-                    setConverting();
-                }
-            });
-
-            // handle download error
-            socket.on('download_error', (data) => {
-                const { message } = data;
-                pageState = 'ERROR';
-                setError(message);
-            });
-
-            // handle finished
-            socket.on('finished', () => {
-                pageState = 'FINISHED';
-                setFinished();
-            });
-
-            // if the socket fails to connect to the server, inform the user through the console
-            socket.on('connect_error', () => {
-                console.log("Socket failed to connect!");
-            });
-
-            // if the socket is disconnected from the server, inform the user through the console
-            socket.on('disconnect', () => {
-                console.log('Socket disconnected froms server!');
-            });
-
-            const debug = (getUrlParameter('debug') == 'true');
+            let downloadType = getUrlParameter('type');
 
             $('#download-button').children('button').on('click', async function (event) {
-                const url = `/api/download/mp4?token=${getUrlParameter('token')}`;
+                const url = `/api/download/${downloadType}?token=${getUrlParameter('token')}`;
                 const response = await fetch(url);
                 if (!response.ok) {
                     event.preventDefault();

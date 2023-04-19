@@ -170,7 +170,7 @@
                 if (response.status == 202) {
                     const data = await response.json();
                     const token = data.token;
-                    window.location = `/converttomp4?token=${token}`
+                    window.location = `/convert?token=${token}&type=mp4`
                 } else {
                     setError("The program isn't able to handle this type of video.");
                 }

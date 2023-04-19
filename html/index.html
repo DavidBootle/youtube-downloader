@@ -72,7 +72,7 @@
                 const data = await response.json();
                 const token = data.token;
 
-                window.location = `/converttomp3?token=${encodeURIComponent(token)}`;
+                window.location = `/convert?token=${encodeURIComponent(token)}&type=mp3`;
             });
 
             $('#convertToMP4Button').on('click', async function () {
@@ -82,7 +82,7 @@
 
                 const url = $('#urlInput').val();
 
-                window.location = `/converttomp4?url=${encodeURIComponent(url)}`;
+                window.location = `/convert?url=${encodeURIComponent(url)}&type=mp4`;
             });
         </script>
     </body>

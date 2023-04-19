@@ -87,23 +87,94 @@ function setError(message) {
 /**
  * Updates the loading dots to show that the page is loading.
  */
-function updateLoadingDots() {
+function updateLoadingDots(numOfLoadingDots) {
     if (numOfLoadingDots == 0) {
         $('#loading-dots-1').addClass('loading-dot-invisible');
         $('#loading-dots-2').addClass('loading-dot-invisible');
         $('#loading-dots-3').addClass('loading-dot-invisible');
-        numOfLoadingDots = 1;
+        return 1;
     }
     else if (numOfLoadingDots == 1) {
         $('#loading-dots-1').removeClass('loading-dot-invisible');
-        numOfLoadingDots = 2;
+        return 2;
     }
     else if (numOfLoadingDots == 2) {
         $('#loading-dots-2').removeClass('loading-dot-invisible');
-        numOfLoadingDots = 3;
+        return 3;
     }
     else if (numOfLoadingDots == 3) {
         $('#loading-dots-3').removeClass('loading-dot-invisible');
-        numOfLoadingDots = 0;
+        return 0;
     }
+}
+
+function registerSocket(socket, debug) {
+    // handle socket connection
+    socket.on('connect', () => {
+        console.log('Connected to server!');
+
+        // when socket connects, register with the server so that it can recieve progress updates
+        socket.emit('register', {
+            token: getUrlParameter('token'),
+        });
+    });
+
+    // handle register_response from the server
+    socket.on('register_response', (data) => {
+        if (data.success) {
+            console.log('Registered with server!');
+        } else {
+            console.log(`Failed to register with server. Reason: "${data.message}"`);
+
+            // set the page to the error state if not debug
+            if (!debug) {
+                if (data.message == 'Invalid token.') {
+                    setError('Your session has expired. Please start a new download.');
+                } else {
+                    setError('Something went wrong! Please try again later.');
+                }
+            }
+        }
+    });
+
+    // handle downloading update
+    socket.on('downloading', (data) => {
+        const { progress } = data;
+        if (window.pageState != 'DOWNLOADING') {
+            window.pageState = 'DOWNLOADING';
+            setDownloading();
+        }
+        setProgress(progress);
+    });
+
+    // handle converting update
+    socket.on('converting', () => {
+        if (window.pageState != 'CONVERTING') {
+            window.pageState = 'CONVERTING';
+            setConverting();
+        }
+    });
+
+    // handle download error
+    socket.on('download_error', (data) => {
+        const { message } = data;
+        window.pageState = 'ERROR';
+        setError(message);
+    });
+
+    // handle finished
+    socket.on('finished', () => {
+        window.pageState = 'FINISHED';
+        setFinished();
+    });
+
+    // if the socket fails to connect to the server, inform the user through the console
+    socket.on('connect_error', () => {
+        console.log("Socket failed to connect!");
+    });
+
+    // if the socket is disconnected from the server, inform the user through the console
+    socket.on('disconnect', () => {
+        console.log('Socket disconnected froms server!');
+    });
 }

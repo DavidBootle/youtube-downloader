@@ -23,16 +23,11 @@ app.get( "/", (req, res) => {
     res.sendFile(path.join(__dirname, '../html/index.html'));
 });
 
-app.get( "/converttomp3", (req, res) => {
-    // send mp3 conversion page
-    res.sendFile(path.join(__dirname, '../html/converttomp3.html'));
-});
-
-app.get( "/converttomp4", (req, res) => {
+app.get( "/convert", (req, res) => {
     // send mp4 conversion page
     const token = req.query.token;
     if (!token) { res.sendFile(path.join(__dirname, '../html/pickvideoquality.html')); }
-    else { res.sendFile(path.join(__dirname, '../html/converttomp4.html')); }
+    else { res.sendFile(path.join(__dirname, '../html/convert.html')); }
 });
 
 // ping method
