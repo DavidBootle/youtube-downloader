@@ -45,7 +45,7 @@ function setStarting() {
  */
 function setProgress(progress) {
     $('#downloadProgress').width(`${progress}%`);
-    $('#downloadPercentage').text(progress.toString());
+    $('#downloadPercentage').text(Math.round(progress).toString());
 }
 
 /**

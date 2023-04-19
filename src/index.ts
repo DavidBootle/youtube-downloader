@@ -307,7 +307,7 @@ app.get( "/api/convert/mp3", async (req, res) => {
 
         video.on('progress', (length: number, downloaded: number, totalLength: number) => {
             let download = downloadsMP3.get(videoToken);
-            download.progress = Math.round((downloaded / totalLength) * 100);
+            download.progress = (downloaded / totalLength) * 100;
             downloadsMP3.set(videoToken, download);
 
             // update connected clients with the state of the download
@@ -436,7 +436,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
             if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
                 let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
                 let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
-                download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+                download.progress = (totalDownloaded / totalDownloadLength ) * 100;
 
                 // update connected clients with the state of the download
                 status_update(videoToken, 'downloading', {
@@ -458,7 +458,7 @@ app.get( "/api/convert/mp4", async (req, res) => {
             if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
                 let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
                 let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
-                download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+                download.progress = (totalDownloaded / totalDownloadLength ) * 100;
 
                 // update connected clients with the state of the download
                 status_update(videoToken, 'downloading', {
