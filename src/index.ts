@@ -215,9 +215,11 @@ app.get( "/api/download/mp3", (req, res) => {
     if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
 
     res.sendFile(download.audioPath, (err) => {
-        unlinkPath(download.downloadPath);
-        unlinkPath(download.audioPath);
-        downloadsMP3.delete(token);
+        setTimeout(() => {
+            unlinkPath(download.downloadPath);
+            unlinkPath(download.audioPath);
+            downloadsMP3.delete(token);
+        }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
     });
 });
 
@@ -246,10 +248,12 @@ app.get( "/api/download/mp3", (req, res) => {
     if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
 
     res.sendFile(download.outputPath, (err) => {
-        unlinkPath(download.videoDownloadPath);
-        unlinkPath(download.audioDownloadPath);
-        unlinkPath(download.outputPath);
-        downloadsMP4.delete(token);
+        setTimeout(() => {
+            unlinkPath(download.videoDownloadPath);
+            unlinkPath(download.audioDownloadPath);
+            unlinkPath(download.outputPath);
+            downloadsMP4.delete(token);
+        }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
     });
 });
 
