@@ -12,6 +12,8 @@
         <link href="/static/sticky-footer.css" rel="stylesheet" type="text/css"/>
         <link href="/static/global-styles.css" rel="stylesheet" type="text/css"/>
         <script src="/static/filesaver/FileSaver.min.js" type="text/javascript"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="/static/javascript/utils.js"></script>
     </head>
     <body>
         <nav class="navbar navbar-dark bg-red bg-gradient">
@@ -47,148 +49,79 @@
         </footer>
 
         <script>
-            let started = false;
-            let convertingPrev = false;
-            let finishedPrev = false;
-            let errorPrev = false;
+            // valid page states:
+            // STARTING, DOWNLOADING, CONVERTING, FINISHED, ERROR
+            let pageState = 'STARTING';
             let numOfLoadingDots = 3;
+            const socket = io();
 
-            var getUrlParameter = function getUrlParameter(sParam) {
-                var sPageURL = window.location.search.substring(1),
-                    sURLVariables = sPageURL.split('&'),
-                    sParameterName,
-                    i;
+            // handle socket connection
+            socket.on('connect', () => {
+                console.log('Connected to server!');
 
-                for (i = 0; i < sURLVariables.length; i++) {
-                    sParameterName = sURLVariables[i].split('=');
+                // when socket connects, register with the server so that it can recieve progress updates
+                socket.emit('register', {
+                    type: 'mp4',
+                    token: getUrlParameter('token'),
+                });
+            });
 
-                    if (sParameterName[0] === sParam) {
-                        return typeof sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
-                    }
-                }
-                return false;
-            };
-
-            const debug = (getUrlParameter('debug') == 'true');
-
-            function setProgress(progress) {
-                $('#startingText').hide();
-                $('#downloadProgress').width(`${progress}%`);
-                $('#downloadPercentage').text(progress.toString());
-            }
-
-            function setDownloading() {
-                $('#starting-text').hide();
-                $('#starting-subtext').hide();
-                $('#status-text').show();
-                $('#progress-bar-container').show();
-                $('#spinner-circle').hide();
-                started = true;
-            }
-
-            function setConverting() {
-                setProgress(100);
-                $('#starting-subtext').show();
-                $('#status-text').text('Converting');
-                $('#status-text').removeClass('mb-3');
-                $('#status-text').addClass('mb-1');
-                convertingPrev = true;
-            }
-
-            function setFinished() {
-                $('#status-text').text('Completed');
-                $('#progress-bar-container').hide();
-                $('#starting-subtext').hide();
-                finishedPrev = true;
-                $('#download-button').show();
-                $('#back-button').show();
-                $('#status-text').removeClass('mb-1');
-                $('#status-text').addClass('mb-3');
-            }
-
-            function setError(message) {
-                $('#errorIcon').show();
-                $('#starting-text').hide();
-                $('#status-text').show();
-                $('#status-text').text('Something Went Wrong');
-                if (message) {
-                    $('#starting-subtext').show();
-                    $('#starting-subtext').text(message);
+            // handle register_response from the server
+            socket.on('register_response', (data) => {
+                if (data.success) {
+                    console.log('Registered with server!');
                 } else {
-                    $('#starting-subtext').hide();
-                }
-                $('#progress-bar-container').hide();
-                $('#download-button').hide();
-                $('#back-button').show();
-                errorPrev = true;
-            }
-
-            function updateLoadingDots() {
-                if (numOfLoadingDots == 0) {
-                    $('#loading-dots-1').addClass('loading-dot-invisible');
-                    $('#loading-dots-2').addClass('loading-dot-invisible');
-                    $('#loading-dots-3').addClass('loading-dot-invisible');
-                    numOfLoadingDots = 1;
-                }
-                else if (numOfLoadingDots == 1) {
-                    $('#loading-dots-1').removeClass('loading-dot-invisible');
-                    numOfLoadingDots = 2;
-                }
-                else if (numOfLoadingDots == 2) {
-                    $('#loading-dots-2').removeClass('loading-dot-invisible');
-                    numOfLoadingDots = 3;
-                }
-                else if (numOfLoadingDots == 3) {
-                    $('#loading-dots-3').removeClass('loading-dot-invisible');
-                    numOfLoadingDots = 0;
-                }
-            }
-
-            let interval = setInterval(async () => {
-                const response = await fetch(`/api/status/mp4?token=${getUrlParameter('token')}`);
-                updateLoadingDots();
-                if (!response.ok) {
-                    if (!errorPrev && !debug) {
-                        switch (response.status) {
-                            case 404:
-                                setError('Your session has expired. Please start a new download.');
-                                clearInterval(interval);
-                            default:
-                                console.log('Something went wrong!');
-                                console.log(response.status, await response.text());
-                        }
-                        return;
-                    }
-                    else {
-                        return;
+                    console.log(`Failed to register with server. Reason: "${data.message}"`);
+                    if (data.message == 'Invalid token.') {
+                        setError('Your session has expired. Please start a new download.');
+                    } else {
+                        setError('Something went wrong! Please try again later.');
                     }
                 }
-                const data = await response.json();
-                const { progress, converting, finished, error } = data;
+            });
 
-                if (progress != 0 && !started) {
+            // handle downloading update
+            socket.on('downloading', (data) => {
+                const { progress } = data;
+                if (pageState != 'DOWNLOADING') {
+                    pageState = 'DOWNLOADING';
                     setDownloading();
                 }
-                
-                if (!converting) {
-                    setProgress(progress);
-                }
+                setProgress(progress);
+            });
 
-                if (!convertingPrev && converting) {
+            // handle converting update
+            socket.on('converting', () => {
+                if (pageState != 'CONVERTING') {
+                    pageState = 'CONVERTING';
                     setConverting();
                 }
+            });
 
-                if (!finishedPrev && finished) {
-                    clearInterval(interval);
-                    setFinished();
-                }
+            // handle download error
+            socket.on('download_error', (data) => {
+                const { message } = data;
+                pageState = 'ERROR';
+                setError(message);
+            });
 
-                if (!errorPrev && error) {
-                    clearInterval(interval);
-                    setError(data.errorMessage);
-                }
+            // handle finished
+            socket.on('finished', () => {
+                pageState = 'FINISHED';
+                setFinished();
+            });
 
-            }, 1000);
+            // if the socket fails to connect to the server, inform the user through the console
+            socket.on('connect_error', () => {
+                console.log("Socket failed to connect!");
+            });
+
+            // if the socket is disconnected from the server, inform the user through the console
+            socket.on('disconnect', () => {
+                console.log('Socket disconnected froms server!');
+            });
+
+            const debug = (getUrlParameter('debug') == 'true');
 
             $('#download-button').children('button').on('click', async function (event) {
                 const url = `/api/download/mp4?token=${getUrlParameter('token')}`;

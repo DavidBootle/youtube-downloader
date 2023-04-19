@@ -4,10 +4,14 @@ import ffmpeg from 'ffmpeg';
 import ytdl from 'ytdl-core';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
+import { createServer } from "http";
+import { Server } from "socket.io";
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 8002;
+const httpServer = createServer(app);
+const io = new Server(httpServer, { /* options */ });
 
 app.use("/static", express.static('public'));
 app.use(express.json());
@@ -70,6 +74,31 @@ type VideoQualityInfo = {
     quality: string,
     qualityLabel: string
 }
+
+/** SOCKET.IO **/
+io.on("connection", (socket) => {
+
+    // handle register event
+    // clients will emit register when they want to tie themselves to a download
+    socket.on('register', (data) => {
+        let tokenExists = downloadsMP3.has(data.token) || downloadsMP4.has(data.token);
+        if (tokenExists) {
+            // if the token is valid, join the socket to the room
+            socket.join(data.token);
+            socket.emit('register_response', {
+                'success': true,
+                'message': 'Registered successfully.'
+            });
+            console.log('Registered new socket to token ' + data.token);
+        } else {
+            // if the token is invalid, inform the socket
+            socket.emit('register_response', {
+                'success': false,
+                'message': 'Invalid token.'
+            });
+        }
+    });
+});
 
 /**
  * Verifies that a given video URL is a real youtube video.
@@ -339,17 +368,28 @@ app.get( "/api/convert/mp4", async (req, res) => {
         let audioPipe = audio.pipe(audioStream);
 
         audio.on('progress', (length: number, downloaded: number, totalLength: number) => {
+            // get the current state of the download
             let download = downloadsMP4.get(videoToken);
+
+            // if the total length is not set, set it
             if (!download.audioTotalLength) {
                 download.audioTotalLength = totalLength;
             }
+            // set whether the audio is downloaded
             download.audioDownloaded = downloaded;
 
+            // if all the lengths are set, calculate the progress
             if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
                 let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
                 let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
                 download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+
+                // update connected clients with the state of the download
+                io.to(videoToken).emit('downloading', {
+                    progress: download.progress
+                });
             }
+
             downloadsMP4.set(videoToken, download);
         });
 
@@ -364,6 +404,11 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
                 let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
                 download.progress = Math.round((totalDownloaded / totalDownloadLength ) * 100);
+
+                // update connected clients with the state of the download
+                io.to(videoToken).emit('downloading', {
+                    progress: download.progress
+                });
             }
             downloadsMP4.set(videoToken, download);
         });
@@ -375,14 +420,20 @@ app.get( "/api/convert/mp4", async (req, res) => {
                 video.addInput(download.audioDownloadPath);
                 video.addCommand('-c:v', 'copy');
                 video.addCommand('-c:a', 'aac');
-                let result = await video.save(download.outputPath);
+                await video.save(download.outputPath);
                 download.finished = true;
                 downloadsMP4.set(videoToken, download);
+
+                // inform connected clients that the download is complete
+                io.to(videoToken).emit('finished');
+
+                // remove files after certain amount of time
                 setTimeout(() => {
                     unlinkPath(download.videoDownloadPath);
                     unlinkPath(download.audioDownloadPath);
                     unlinkPath(download.outputPath);
-                }, 10 * 60 * 1000); // remove all files in 10 minutes
+                    downloadsMP4.delete(videoToken);
+                }, parseInt(process.env.YTDL_CLEAR_AFTER_COMPLETE_TIME) * 1000 * 60); // remove all files in X minutes
             } catch (err) {
                 let download = downloadsMP4.get(videoToken);
                 download.error = true;
@@ -402,6 +453,8 @@ app.get( "/api/convert/mp4", async (req, res) => {
             downloadsMP4.set(videoToken, download);
 
             if (download.convertingAudio && download.convertingVideo) {
+                // inform connected clients that the download is finished and conversion has begun
+                io.to(videoToken).emit('converting');
                 combine();
             }
         });
@@ -412,6 +465,8 @@ app.get( "/api/convert/mp4", async (req, res) => {
             download.convertingVideo = true;
             downloadsMP4.set(videoToken, download);
             if (download.convertingAudio && download.convertingVideo) {
+                // inform connected clients that the download is finished and conversion has begun
+                io.to(videoToken).emit('converting');
                 combine();
             }
         });
@@ -423,7 +478,10 @@ app.get( "/api/convert/mp4", async (req, res) => {
         unlinkPath(download.videoDownloadPath);
         unlinkPath(download.outputPath);
         downloadsMP4.set(videoToken, download);
-        throw err;
+        // inform connected clients that the download has failed
+        io.to(videoToken).emit('download_error', {
+            message: 'Something went wrong when downloading the video.'
+        });
     }
 });
 
@@ -484,6 +542,6 @@ app.get( "/api/info/video", async (req, res) => {
     });
 });
 
-app.listen( port, () => {
+httpServer.listen( port, () => {
     console.log(`Server started at http://localhost:${port}`);
 });
