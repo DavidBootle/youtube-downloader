@@ -67,7 +67,12 @@
                 const url = $('#urlInput').val();
                 const response = await fetch(`/api/convert/mp3?url=${url}`);
 
-                if (!response.ok) { alert('Something went wrong, try again later.'); return; }
+                if (response.status == 400) {
+                    alert('Invalid video url.');
+                    return;
+                }
+
+                else if (!response.ok) { alert('Something went wrong, try again later.'); return; }
 
                 const data = await response.json();
                 const token = data.token;

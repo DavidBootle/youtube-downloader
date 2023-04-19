@@ -19,12 +19,31 @@ function getUrlParameter(sParam) {
     return false;
 };
 
+function hideAll() {
+    $('#errorIcon').hide();
+    $('#starting-text').hide();
+    $('#status-text').hide();
+    $('#converting-text').hide();
+    $('#spinner-circle').hide();
+    $('#starting-subtext').hide();
+    $('#progress-bar-container').hide();
+    $('#buttonContainer').hide();
+    $('#completed-text').hide();
+    $('#back-button').hide();
+    $('#error-text').hide();
+}
+
+function setStarting() {
+    hideAll();
+    $('#starting-text').show();
+    $('#starting-subtext').show();
+}
+
 /**
  * Updates the progress bar
  * @param {number} progress
  */
 function setProgress(progress) {
-    $('#startingText').hide();
     $('#downloadProgress').width(`${progress}%`);
     $('#downloadPercentage').text(progress.toString());
 }
@@ -33,35 +52,29 @@ function setProgress(progress) {
  * Sets the page to the downloading state.
  */
 function setDownloading() {
-    $('#starting-text').hide();
-    $('#starting-subtext').hide();
+    hideAll();
     $('#status-text').show();
     $('#progress-bar-container').show();
-    $('#spinner-circle').hide();
 }
 
 /**
  * Sets the page to the converting state.
  */
 function setConverting() {
+    hideAll();
     setProgress(100);
+    $('#converting-text').show();
     $('#starting-subtext').show();
-    $('#status-text').text('Converting');
-    $('#status-text').removeClass('mb-3');
-    $('#status-text').addClass('mb-1');
+    $('#progress-bar-container').show();
 }
 
 /**
  * Sets the page to the finished state
  */
 function setFinished() {
-    $('#status-text').text('Completed');
-    $('#progress-bar-container').hide();
-    $('#starting-subtext').hide();
-    $('#download-button').show();
-    $('#back-button').show();
-    $('#status-text').removeClass('mb-1');
-    $('#status-text').addClass('mb-3');
+    hideAll();
+    $('#completed-text').show();
+    $('#buttonContainer').show();
 }
 
 /**
@@ -69,19 +82,14 @@ function setFinished() {
  * @param {*} message 
  */
 function setError(message) {
+    hideAll();
     $('#errorIcon').show();
-    $('#starting-text').hide();
-    $('#status-text').show();
-    $('#status-text').text('Something Went Wrong');
+    $('#error-text').show();
+    $('#back-button').show();
     if (message) {
         $('#starting-subtext').show();
         $('#starting-subtext').text(message);
-    } else {
-        $('#starting-subtext').hide();
     }
-    $('#progress-bar-container').hide();
-    $('#download-button').hide();
-    $('#back-button').show();
 }
 
 /**
@@ -89,26 +97,28 @@ function setError(message) {
  */
 function updateLoadingDots(numOfLoadingDots) {
     if (numOfLoadingDots == 0) {
-        $('#loading-dots-1').addClass('loading-dot-invisible');
-        $('#loading-dots-2').addClass('loading-dot-invisible');
-        $('#loading-dots-3').addClass('loading-dot-invisible');
+        $('.loading-dots-1').addClass('loading-dot-invisible');
+        $('.loading-dots-2').addClass('loading-dot-invisible');
+        $('.loading-dots-3').addClass('loading-dot-invisible');
         return 1;
     }
     else if (numOfLoadingDots == 1) {
-        $('#loading-dots-1').removeClass('loading-dot-invisible');
+        $('.loading-dots-1').removeClass('loading-dot-invisible');
         return 2;
     }
     else if (numOfLoadingDots == 2) {
-        $('#loading-dots-2').removeClass('loading-dot-invisible');
+        $('.loading-dots-2').removeClass('loading-dot-invisible');
         return 3;
     }
     else if (numOfLoadingDots == 3) {
-        $('#loading-dots-3').removeClass('loading-dot-invisible');
+        $('.loading-dots-3').removeClass('loading-dot-invisible');
         return 0;
     }
 }
 
 function registerSocket(socket, debug) {
+    setTimeout(() => {$('#eta-text-container').show()}, 5000); // show eta after 5 seconds of downloading
+
     // handle socket connection
     socket.on('connect', () => {
         console.log('Connected to server!');
@@ -156,12 +166,13 @@ function registerSocket(socket, debug) {
 
     // handle downloading update
     socket.on('downloading', (data) => {
-        const { progress } = data;
+        const { progress, eta } = data;
         if (window.pageState != 'DOWNLOADING') {
             window.pageState = 'DOWNLOADING';
             setDownloading();
         }
         setProgress(progress);
+        $('#eta-text').text(eta);
     });
 
     // handle converting update

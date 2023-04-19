@@ -50,6 +50,7 @@ type MP3ConvertInfo = {
     error: boolean,
     errorMessage: string,
     lastUpdate?: SocketResponse,
+    startTime?: number,
 }
 type MP4ConvertInfo = {
     videoDownloadPath: string,
@@ -66,6 +67,7 @@ type MP4ConvertInfo = {
     error: boolean,
     errorMessage: string,
     lastUpdate?: SocketResponse,
+    startTime?: number,
 }
 let downloadsMP3 = new Map<string, MP3ConvertInfo>();
 let downloadsMP4 = new Map<string, MP4ConvertInfo>();
@@ -144,6 +146,33 @@ io.on("connection", (socket) => {
         }
     });
 });
+
+/**
+ * Returns the time remaining as a simple string.
+ * @param timeElapsed Time elapsed in milliseconds
+ * @param progress Progress percentage from 0 to 100
+ */
+function getETAString(timeElapsed: number, progress: number) {
+    progress /= 100;
+    let timeRemaining = (timeElapsed / progress) * (1 - progress);
+
+    if (timeRemaining / 86400000 > 1) {
+        let days = Math.floor(timeRemaining / 86400000);
+        return `${days} day${days == 1 ? '' : 's'}`
+    }
+    else if (timeRemaining / 3600000 > 1) {
+        let hours = Math.floor(timeRemaining / 3600000);
+        return `${hours} hour${hours == 1 ? '' : 's'}`;
+    }
+    else if (timeRemaining / 60000 > 1) {
+        let minutes = Math.floor(timeRemaining / 60000);
+        return `${minutes} minute${minutes == 1 ? '' : 's'}`;
+    }
+    else {
+        let seconds = Math.floor(timeRemaining / 1000);
+        return `${seconds} second${seconds == 1 ? '' : 's'}`;
+    }
+}
 
 /**
  * Verifies that a given video URL is a real youtube video.
@@ -292,13 +321,20 @@ app.get( "/api/download/mp3", (req, res) => {
 /**
  * Starts converting a youtube video to mp3.
  */
-app.get( "/api/convert/mp3", (req, res) => {
+app.get( "/api/convert/mp3", async (req, res) => {
     const youtubeURL: string = req.query.url as string;
 
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
 
     const downloadPath: string = `/${process.env.YTDL_PATH}/${uuid()}.mp4`;
     const audioPath: string = `/${process.env.YTDL_PATH}/${uuid()}.mp3`;
+
+    try {
+        await ytdl.getVideoID(youtubeURL); // run this to make sure it's a valid video
+    } catch {
+        res.status(400).send('Not a valid YouTube video.');
+        return;
+    }
 
     if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
 
@@ -312,6 +348,7 @@ app.get( "/api/convert/mp3", (req, res) => {
         finished: false,
         error: false,
         errorMessage: '',
+        startTime: new Date().getTime(),
     }
     downloadsMP3.set(videoToken, download);
     res.status(202).send({ 'token': videoToken });
@@ -328,7 +365,8 @@ app.get( "/api/convert/mp3", (req, res) => {
 
             // update connected clients with the state of the download
             status_update(videoToken, 'downloading', {
-                progress: download.progress
+                progress: download.progress,
+                eta: getETAString(new Date().getTime() - download.startTime, download.progress),
             });
         });
 
@@ -417,7 +455,8 @@ app.get( "/api/convert/mp4", async (req, res) => {
         convertingVideo: false,
         finished: false,
         error: false,
-        errorMessage: ''
+        errorMessage: '',
+        startTime: new Date().getTime(),
     }
     downloadsMP4.set(videoToken, download);
     res.status(202).send({ 'token': videoToken });
@@ -454,7 +493,8 @@ app.get( "/api/convert/mp4", async (req, res) => {
 
                 // update connected clients with the state of the download
                 status_update(videoToken, 'downloading', {
-                    progress: download.progress
+                    progress: download.progress,
+                    eta: getETAString(new Date().getTime() - download.startTime, download.progress),
                 });
             }
 
@@ -475,7 +515,8 @@ app.get( "/api/convert/mp4", async (req, res) => {
 
                 // update connected clients with the state of the download
                 status_update(videoToken, 'downloading', {
-                    progress: download.progress
+                    progress: download.progress,
+                    eta: getETAString(new Date().getTime() - download.startTime, download.progress),
                 });
             }
             downloadsMP4.set(videoToken, download);
