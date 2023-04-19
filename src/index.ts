@@ -381,9 +381,9 @@ app.get( "/api/convert/mp4", async (req, res) => {
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
     if (!quality) { res.status(400).send("'quality' parameter is required."); return; }
 
-    const videoDownloadPath: string = `/tmp/${uuid()}.mp4`;
-    const audioDownloadPath: string = `/tmp/${uuid()}.mp4`;
-    const outputPath: string = `/tmp/${uuid()}.mp4`;
+    const videoDownloadPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
+    const audioDownloadPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
+    const outputPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
 
     if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
 
