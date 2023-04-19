@@ -4,7 +4,7 @@ import ffmpeg from 'ffmpeg';
 import ytdl from 'ytdl-core';
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
-require('dotenv');
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 8002;
@@ -15,14 +15,17 @@ app.use(express.json());
 /* PAGES */
 
 app.get( "/", (req, res) => {
+    // send the home page
     res.sendFile(path.join(__dirname, '../html/index.html'));
 });
 
 app.get( "/converttomp3", (req, res) => {
+    // send mp3 conversion page
     res.sendFile(path.join(__dirname, '../html/converttomp3.html'));
 });
 
 app.get( "/converttomp4", (req, res) => {
+    // send mp4 conversion page
     const token = req.query.token;
     if (!token) { res.sendFile(path.join(__dirname, '../html/pickvideoquality.html')); }
     else { res.sendFile(path.join(__dirname, '../html/converttomp4.html')); }
@@ -72,11 +75,16 @@ type VideoQualityInfo = {
  * Verifies that a given video URL is a real youtube video.
  */
 app.get( "/api/verify", (req, res) => {
+    // get the url parameter
     const url: string = req.query.url as string;
 
+    // if the url parameter is not provided, return an error
     if (!url) { res.status(400).send("'url' parameter is required."); return; }
 
+    // check if the url is valid
     let isValidURL: boolean = ytdl.validateURL(url);
+
+    // send the response
     res.send({ 'valid': isValidURL });
 });
 
