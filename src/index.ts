@@ -16,6 +16,14 @@ const io = new Server(httpServer, { /* options */ });
 app.use("/static", express.static('public'));
 app.use(express.json());
 
+// wipe the temp folder when starting up
+fs.readdir(process.env.YTDL_PATH, (err, files) => {
+    if (err) throw err;
+    for (const file of files) {
+        fs.unlink(path.join(process.env.YTDL_PATH, file), err => {});
+    }
+});
+
 /* PAGES */
 
 app.get( "/", (req, res) => {
