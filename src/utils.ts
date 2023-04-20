@@ -327,7 +327,7 @@ export class MP3Conversion extends Conversion {
         super.startDownload();
 
         // start the audio download
-        this.audio.startDownload(this.youtubeUrl, { quality: 'highestaudio', filter: 'audioonly' });
+        this.audio.startDownload(this.youtubeUrl, { quality: 'highestaudio' });
     }
 
     /**
@@ -379,4 +379,72 @@ export class MP4Conversion extends Conversion {
     audio: Download;
     /** The download object representing the video. */
     video: Download;
+    /** The quality of the video. */
+    quality: string;
+
+    /**
+     * Create a new MP4Conversion object.
+     * @param token The token used as the identifier for this conversion.
+     * @param youtubeURL The url of the youtube video being downloaded.
+     * @param quality The quality of the video.
+     * @param audioDownloadPath The path that the audio file should be downloaded to.
+     * @param videoDownloadPath The path that the video file should be downloaded to.
+     * @param outputPath The path that the outputted file should have after conversion.
+     * @param io Socket.io server
+     * @param removeCallback Function that is called when the conversion runs delete on itself.
+     */
+    constructor(token: string, youtubeURL: string, quality: string, audioDownloadPath: string, videoDownloadPath: string, outputPath: string, io: Server, removeCallback?: () => void) {
+
+        // create the audio download object
+        let audio = new Download(audioDownloadPath);
+        let video = new Download(videoDownloadPath);
+        
+        super([audio, video], outputPath, token, youtubeURL, io, removeCallback);
+        this.audio = audio;
+        this.video = video;
+        this.quality = quality;
+    }
+
+    /**
+     * Start downloading.
+     */
+    startDownload() {
+        super.startDownload();
+
+        // start the audio and video downloads
+        this.audio.startDownload(this.youtubeUrl, { quality: 'highestaudio' });
+        this.video.startDownload(this.youtubeUrl, { filter: format => format.quality == this.quality && format.container == 'mp4' });
+    }
+
+    /**
+     * Start conversion.
+     * This should not be called manually, it will be called when the download is finished.
+     */
+    async startConversion() {
+        try {
+            // combine audio and video
+            let video = await new ffmpeg(this.video.downloadPath);
+            video.addInput(this.audio.downloadPath);
+            video.addCommand('-c:v', 'copy');
+            video.addCommand('-c:a', 'aac');
+            await video.save(this.outputPath);
+
+            // set the state to completed and emit a success signal
+            this.state = ConversionState.COMPLETED;
+            this.emit('finished', {});
+
+            // set timeout to delete the downloaded files
+            setTimeout(() => {
+                this.delete()
+            }, parseInt(process.env.YTDL_CLEAR_AFTER_COMPLETE_TIME) * 1000 * 60);
+        }
+
+        catch (error) {
+            // if any conversion fails, set the state to failed and emit an error
+            this.state = ConversionState.FAILED;
+            this.emit('download_error', { message: error.message });
+            this.delete();
+        }
+    }
+
 }

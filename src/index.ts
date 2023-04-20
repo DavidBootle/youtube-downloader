@@ -48,7 +48,7 @@ app.get( "/api/ping", (req, res) => {
 /* UTILITIES */
 
 let downloadsMP3 = new Map<string, MP3Conversion>();
-let downloadsMP4 = new Map<string, MP4ConvertInfo>();
+let downloadsMP4 = new Map<string, MP4Conversion>();
 
 function unlinkPath(path: string) {
     fs.unlink(path, (err) => {});
@@ -57,47 +57,8 @@ type VideoQualityInfo = {
     quality: string,
     qualityLabel: string
 }
-type MP4ConvertInfo = {
-    videoDownloadPath: string,
-    audioDownloadPath: string,
-    outputPath: string,
-    videoTotalLength: number,
-    audioTotalLength: number,
-    videoDownloaded: number,
-    audioDownloaded: number,
-    progress: number,
-    convertingAudio: boolean,
-    convertingVideo: boolean,
-    finished: boolean,
-    error: boolean,
-    errorMessage: string,
-    lastUpdate?: SocketResponse,
-    startTime?: number,
-}
 
 /** SOCKET.IO **/
-
-/**
- * Wrapper for emitting a status update to connected sockets.
- * @param token The token of the download
- * @param signal The event string
- * @param data A data object or nothing
- */
-function status_update(token: string, signal: string, data: any) {
-    io.to(token).emit(signal, data);
-    
-    if (downloadsMP3.has(token)) {
-        // handle mp3
-        let download = downloadsMP3.get(token);
-        download.lastUpdate = { signal, data };
-        downloadsMP3.set(token, download);
-    } else if (downloadsMP4.has(token)) {
-        // handle mp4
-        let download = downloadsMP4.get(token);
-        download.lastUpdate = { signal, data };
-        downloadsMP4.set(token, download);
-    }
-}
 
 io.on("connection", (socket) => {
 
@@ -217,62 +178,44 @@ app.get( "/api/download/:type", async (req, res) => {
     if (!isValidToken) { res.status(404).send("Invalid token."); return; }
 
     // get MP3Conversion object
+    let download: MP3Conversion | MP4Conversion;
     if (type == 'mp3') {
-        let download = downloadsMP3.get(token);
-
-        // if the download has failed
-        if (download.state == ConversionState.FAILED) {
-            // send an error message
-            res.status(500).send('An error occurred while converting to audio.');
-            // delete the download
-            download.delete();
-        }
-
-        // if the download isn't completed
-        else if (download.state != ConversionState.COMPLETED) {
-            // respond that the audio file is not ready for download
-            res.status(400).send('Audio file is not ready for download.');
-        }
-
-        // if the download is completed
-        else {
-            // get video name
-            let info = await ytdl.getInfo(download.youtubeUrl);
-            info.videoDetails.title;
-            res.download(download.outputPath, `${info.videoDetails.title}.mp3`, (err) => {
-                setTimeout(() => {
-                    download.delete();
-                }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
-            });
-        }
+        download = downloadsMP3.get(token);
     }
     
     else if (type == 'mp4') {
-        let download = downloadsMP4.get(token);
-
-        if (download.error) {
-            res.status(500).send(download.errorMessage);
-            unlinkPath(download.videoDownloadPath);
-            unlinkPath(download.audioDownloadPath);
-            unlinkPath(download.outputPath);
-            downloadsMP4.delete(token);
-            return;
-        }
-
-        if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
-
-        res.sendFile(download.outputPath, (err) => {
-            setTimeout(() => {
-                unlinkPath(download.videoDownloadPath);
-                unlinkPath(download.audioDownloadPath);
-                unlinkPath(download.outputPath);
-                downloadsMP4.delete(token);
-            }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
-        });
+        download = downloadsMP4.get(token);
     }
     
     else {
         res.status(404).send('Invalid type.');
+        return;
+    }
+
+    // if the download has failed
+    if (download.state == ConversionState.FAILED) {
+        // send an error message
+        res.status(500).send('An error occurred while converting to audio.');
+        // delete the download
+        download.delete();
+    }
+
+    // if the download isn't completed
+    else if (download.state != ConversionState.COMPLETED) {
+        // respond that the file is not ready for download
+        res.status(400).send('File is not ready for download.');
+    }
+
+    // if the download is completed
+    else {
+        // get video name
+        let info = await ytdl.getInfo(download.youtubeUrl);
+        info.videoDetails.title;
+        res.download(download.outputPath, `${info.videoDetails.title}.${type}`, (err) => {
+            setTimeout(() => {
+                download.delete();
+            }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
+        });
     }
     
 });
@@ -321,175 +264,34 @@ app.get( "/api/convert/mp3", async (req, res) => {
  * Starts converting a youtube video to mp4.
  */
 app.get( "/api/convert/mp4", async (req, res) => {
+    // get url parameters
     const youtubeURL: string = decodeURIComponent(req.query.url as string);
     const quality: string = decodeURIComponent(req.query.quality as string);
 
+    // verify url parameters
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
     if (!quality) { res.status(400).send("'quality' parameter is required."); return; }
-
+    if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
+    
+    // set paths and generate token
     const videoDownloadPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
     const audioDownloadPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
     const outputPath: string = `${process.env.YTDL_PATH}/${uuid()}.mp4`;
+    const token: string = uuid();
 
-    if (!ytdl.validateURL(youtubeURL)) { res.status(400).send('Not a valid YouTube video.'); return; }
+    // generate download object
+    let download = new MP4Conversion(token, youtubeURL, quality, videoDownloadPath, audioDownloadPath, outputPath, io, () => {
+        downloadsMP4.delete(token);
+    });
 
-    const videoToken: string = uuid();
+    // save to map
+    downloadsMP4.set(token, download);
 
-    let download: MP4ConvertInfo = {
-        videoDownloadPath,
-        audioDownloadPath,
-        outputPath,
-        videoTotalLength: null,
-        audioTotalLength: null,
-        videoDownloaded: null,
-        audioDownloaded: null,
-        progress: 0,
-        convertingAudio: false,
-        convertingVideo: false,
-        finished: false,
-        error: false,
-        errorMessage: '',
-        startTime: new Date().getTime(),
-    }
-    downloadsMP4.set(videoToken, download);
-    res.status(202).send({ 'token': videoToken });
+    // tell client that the download has started
+    res.status(202).send({ token });
 
-    try {
-
-        let video = await ytdl(youtubeURL, { filter: format => format.quality == quality && format.container == 'mp4' });
-        let audio = await ytdl(youtubeURL, { quality: 'highestaudio' });
-
-        // get video pipe
-        let videoStream = fs.createWriteStream(download.videoDownloadPath);
-        let videoPipe = video.pipe(videoStream);
-
-        // get audio pipe
-        let audioStream = fs.createWriteStream(download.audioDownloadPath);
-        let audioPipe = audio.pipe(audioStream);
-
-        audio.on('progress', (length: number, downloaded: number, totalLength: number) => {
-            // get the current state of the download
-            let download = downloadsMP4.get(videoToken);
-
-            // if the total length is not set, set it
-            if (!download.audioTotalLength) {
-                download.audioTotalLength = totalLength;
-            }
-            // set whether the audio is downloaded
-            download.audioDownloaded = downloaded;
-
-            // if all the lengths are set, calculate the progress
-            if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
-                let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
-                let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
-                download.progress = (totalDownloaded / totalDownloadLength ) * 100;
-
-                // update connected clients with the state of the download
-                status_update(videoToken, 'downloading', {
-                    progress: download.progress,
-                    eta: getETAString(new Date().getTime() - download.startTime, download.progress),
-                });
-            }
-
-            downloadsMP4.set(videoToken, download);
-        });
-
-        video.on('progress', (length: number, downloaded: number, totalLength: number) => {
-            let download = downloadsMP4.get(videoToken);
-            if (!download.videoTotalLength) {
-                download.videoTotalLength = totalLength;
-            }
-            download.videoDownloaded = downloaded;
-
-            if (download.audioTotalLength && download.audioDownloaded && download.videoTotalLength && download.videoDownloaded) {
-                let totalDownloaded = download.audioDownloaded + download.videoDownloaded;
-                let totalDownloadLength = download.audioTotalLength + download.videoTotalLength;
-                download.progress = (totalDownloaded / totalDownloadLength ) * 100;
-
-                // update connected clients with the state of the download
-                status_update(videoToken, 'downloading', {
-                    progress: download.progress,
-                    eta: getETAString(new Date().getTime() - download.startTime, download.progress),
-                });
-            }
-            downloadsMP4.set(videoToken, download);
-        });
-
-        async function combine() {
-            try {
-                let download = downloadsMP4.get(videoToken);
-                let video = await new ffmpeg(download.videoDownloadPath);
-                video.addInput(download.audioDownloadPath);
-                video.addCommand('-c:v', 'copy');
-                video.addCommand('-c:a', 'aac');
-                await video.save(download.outputPath);
-                download.finished = true;
-                downloadsMP4.set(videoToken, download);
-
-                // inform connected clients that the download is complete
-                status_update(videoToken, 'finished', {});
-
-                // remove files after certain amount of time
-                setTimeout(() => {
-                    unlinkPath(download.videoDownloadPath);
-                    unlinkPath(download.audioDownloadPath);
-                    unlinkPath(download.outputPath);
-                    downloadsMP4.delete(videoToken);
-                }, parseInt(process.env.YTDL_CLEAR_AFTER_COMPLETE_TIME) * 1000 * 60); // remove all files in X minutes
-            } catch (err) {
-                let download = downloadsMP4.get(videoToken);
-                download.error = true;
-                download.errorMessage = 'Something went wrong when converting the video.';
-                unlinkPath(download.audioDownloadPath);
-                unlinkPath(download.videoDownloadPath);
-                unlinkPath(download.outputPath);
-                downloadsMP4.set(videoToken, download);
-                console.error(err);
-
-                // update connected clients
-                status_update(videoToken, 'download_error', {
-                    message: download.errorMessage
-                });
-            }
-        }
-
-        audioPipe.on('finish', async () => {
-            audioPipe.close();
-            let download = downloadsMP4.get(videoToken);
-            download.convertingAudio = true;
-            downloadsMP4.set(videoToken, download);
-
-            if (download.convertingAudio && download.convertingVideo) {
-                // inform connected clients that the download is finished and conversion has begun
-                status_update(videoToken, 'converting', {});
-                combine();
-            }
-        });
-
-        videoPipe.on('finish', async () => {
-            videoPipe.close();
-            let download = downloadsMP4.get(videoToken);
-            download.convertingVideo = true;
-            downloadsMP4.set(videoToken, download);
-            if (download.convertingAudio && download.convertingVideo) {
-                // inform connected clients that the download is finished and conversion has begun
-                status_update(videoToken, 'converting', {});
-                combine();
-            }
-        });
-    } catch (err) {
-        let download = downloadsMP4.get(videoToken);
-        download.error = true;
-        download.errorMessage = 'Something went wrong when downloading the video.';
-        unlinkPath(download.audioDownloadPath);
-        unlinkPath(download.videoDownloadPath);
-        unlinkPath(download.outputPath);
-        downloadsMP4.set(videoToken, download);
-        // inform connected clients that the download has failed
-        status_update(videoToken, 'download_error', {
-            message: 'Something went wrong when downloading the video.'
-        });
-    }
+    // start download
+    download.startDownload();
 });
 
 /** Gets video information and returns it as an object */
