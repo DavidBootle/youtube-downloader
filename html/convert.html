@@ -45,7 +45,6 @@
             <div id="back-button" style="display:none">
                 <a class="btn btn-secondary btn-lg" href="/">Back</a>
             </div>
-            <a id="download-link" download style="display:none"></a>
         </div>
 
         <footer class="footer">
@@ -74,18 +73,17 @@
             let token = getUrlParameter('token');
 
             // update download button link info
-            $('#download-link').attr('href', `/api/download/${downloadType}?token=${token}`);
+            $('#download-button').children('a').attr('href', `/api/download/${downloadType}?token=${token}`);
 
-            $('#download-button').on('click', async (event) => {
-                // make sure the token exists
-                event.preventDefault();
-                let response = await fetch(`/api/verify-token?token=${token}`);
-                let data = await response.json();
-                if (!data.valid) {
-                    setError('The download link has expired.');
-                } else {
-                    $('#download-link').click();
-                }
+            // one second after the button is clicked, send an update request
+            $('#download-link').on('click', (event) => {
+                setTimeout(() => {
+                    socket.emit('update_request', {
+                        token: token,
+                    });
+                }, 1000);
+                
+                return true;
             });
             
             // debug
