@@ -28,7 +28,7 @@
             </div>
             <h1 id="converting-text" class="mb-1" style="display:none">Converting<span class="loading-dots loading-dots-1">.</span><span class="loading-dots loading-dots-2">.</span><span class="loading-dots loading-dots-3">.</span></h1>
             <div id="spinner-circle" class="spinner-border my-4" style="width: 3rem; height: 3rem; display:none" role="status"></div>
-            <h1 class="mb-3" id="completed-text" style="display:none">Download Complete</h1>
+            <h1 class="mb-3" id="completed-text" style="display:none">Conversion Complete</h1>
             <h1 class="mb-3" id="error-text" style="display:none">Something Went Wrong</h1>
             <p id="starting-subtext" class="lead" style="display:none">This could take a bit...</p>
             <div class="progress w-100" id="progress-bar-container" style="display:none">
@@ -36,7 +36,7 @@
             </div>
             <div id="buttonContainer" class="row g-3" style="display:none">
                 <div class="col" id="download-button">
-                    <button class="btn btn-danger btn-lg">Save</button>
+                    <a id="download-link" download><button class="btn btn-danger btn-lg">Download</button></a>
                 </div>
                 <div class="col">
                     <a class="btn btn-secondary btn-lg" href="/">Back</a>
@@ -45,6 +45,7 @@
             <div id="back-button" style="display:none">
                 <a class="btn btn-secondary btn-lg" href="/">Back</a>
             </div>
+            <a id="download-link" download style="display:none"></a>
         </div>
 
         <footer class="footer">
@@ -70,18 +71,20 @@
             }, 1000);
 
             let downloadType = getUrlParameter('type');
+            let token = getUrlParameter('token');
 
-            $('#download-button').children('button').on('click', async function (event) {
-                const url = `/api/download/${downloadType}?token=${getUrlParameter('token')}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    event.preventDefault();
-                    setError('Your download could not be fetched from the server.');
-                    return false;
+            // update download button link info
+            $('#download-link').attr('href', `/api/download/${downloadType}?token=${token}`);
+
+            $('#download-button').on('click', async (event) => {
+                // make sure the token exists
+                event.preventDefault();
+                let response = await fetch(`/api/verify-token?token=${token}`);
+                let data = await response.json();
+                if (!data.valid) {
+                    setError('The download link has expired.');
                 } else {
-                    const data = await response.blob();
-                    saveAs(data, 'ytvideo.mp4');
-                    window.location = '/';
+                    $('#download-link').click();
                 }
             });
             

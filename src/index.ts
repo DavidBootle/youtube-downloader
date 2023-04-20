@@ -187,10 +187,25 @@ app.get( "/api/verify", (req, res) => {
     res.send({ 'valid': isValidURL });
 });
 
+app.get('/api/verify-token', (req, res) => {
+    // get token from parameters
+    const token: string = req.query.token as string;
+
+    // validate paramters
+    if (!token) { res.status(400).send("'token' parameter is required."); return; }
+
+    // check if the token is valid
+    let isValidToken = downloadsMP3.has(token) || downloadsMP4.has(token);
+    
+    res.json({
+        'valid': isValidToken
+    });
+});
+
 /**
  * Gets the download of an mp3 conversion
  */
-app.get( "/api/download/mp3", (req, res) => {
+app.get( "/api/download/mp3", async (req, res) => {
     // get url parameters
     const token: string = req.query.token as string;
 
@@ -219,7 +234,10 @@ app.get( "/api/download/mp3", (req, res) => {
 
     // if the download is completed
     else {
-        res.sendFile(download.outputPath, (err) => {
+        // get video name
+        let info = await ytdl.getInfo(download.youtubeUrl);
+        info.videoDetails.title;
+        res.download(download.outputPath, `${info.videoDetails.title}.mp3`, (err) => {
             setTimeout(() => {
                 download.delete();
             }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
