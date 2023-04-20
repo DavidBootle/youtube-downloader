@@ -63,7 +63,8 @@
                 const response = await fetch(`/api/convert/mp3?url=${url}`);
 
                 if (response.status == 400) {
-                    alert('Invalid video url.');
+                    $('#urlInput').addClass('is-invalid');
+                    $('#urlFeedback').text('Must be a valid YouTube video')
                     return;
                 }
 
