@@ -14,6 +14,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { /* options */ });
 
 app.use("/static", express.static('public'));
+app.use("/favicon.ico", express.static('favicon.ico'));
 app.use(express.json());
 
 // wipe the temp folder when starting up
