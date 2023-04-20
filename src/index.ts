@@ -205,78 +205,76 @@ app.get('/api/verify-token', (req, res) => {
 /**
  * Gets the download of an mp3 conversion
  */
-app.get( "/api/download/mp3", async (req, res) => {
+app.get( "/api/download/:type", async (req, res) => {
     // get url parameters
     const token: string = req.query.token as string;
+    const { type } = req.params;
 
     // validate paramters
     if (!token) { res.status(400).send("'token' parameter is required."); return; }
 
-    let isValidToken = downloadsMP3.has(token);
+    let isValidToken = downloadsMP3.has(token) || downloadsMP4.has(token);
     if (!isValidToken) { res.status(404).send("Invalid token."); return; }
 
     // get MP3Conversion object
-    let download = downloadsMP3.get(token);
+    if (type == 'mp3') {
+        let download = downloadsMP3.get(token);
 
-    // if the download has failed
-    if (download.state == ConversionState.FAILED) {
-        // send an error message
-        res.status(500).send('An error occurred while converting to audio.');
-        // delete the download
-        download.delete();
+        // if the download has failed
+        if (download.state == ConversionState.FAILED) {
+            // send an error message
+            res.status(500).send('An error occurred while converting to audio.');
+            // delete the download
+            download.delete();
+        }
+
+        // if the download isn't completed
+        else if (download.state != ConversionState.COMPLETED) {
+            // respond that the audio file is not ready for download
+            res.status(400).send('Audio file is not ready for download.');
+        }
+
+        // if the download is completed
+        else {
+            // get video name
+            let info = await ytdl.getInfo(download.youtubeUrl);
+            info.videoDetails.title;
+            res.download(download.outputPath, `${info.videoDetails.title}.mp3`, (err) => {
+                setTimeout(() => {
+                    download.delete();
+                }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
+            });
+        }
     }
+    
+    else if (type == 'mp4') {
+        let download = downloadsMP4.get(token);
 
-    // if the download isn't completed
-    else if (download.state != ConversionState.COMPLETED) {
-        // respond that the audio file is not ready for download
-        res.status(400).send('Audio file is not ready for download.');
-    }
-
-    // if the download is completed
-    else {
-        // get video name
-        let info = await ytdl.getInfo(download.youtubeUrl);
-        info.videoDetails.title;
-        res.download(download.outputPath, `${info.videoDetails.title}.mp3`, (err) => {
-            setTimeout(() => {
-                download.delete();
-            }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
-        });
-    }
-});
-
-/**
- * Gets the download of an mp3 conversion
- */
- app.get( "/api/download/mp4", (req, res) => {
-    const token: string = req.query.token as string;
-
-    if (!token) { res.status(400).send("'token' parameter is required."); return; }
-
-    let isValidToken = downloadsMP4.has(token);
-    if (!isValidToken) { res.status(404).send("Invalid token."); return; }
-
-    let download = downloadsMP4.get(token);
-
-    if (download.error) {
-        res.status(500).send(download.errorMessage);
-        unlinkPath(download.videoDownloadPath);
-        unlinkPath(download.audioDownloadPath);
-        unlinkPath(download.outputPath);
-        downloadsMP4.delete(token);
-        return;
-    }
-
-    if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
-
-    res.sendFile(download.outputPath, (err) => {
-        setTimeout(() => {
+        if (download.error) {
+            res.status(500).send(download.errorMessage);
             unlinkPath(download.videoDownloadPath);
             unlinkPath(download.audioDownloadPath);
             unlinkPath(download.outputPath);
             downloadsMP4.delete(token);
-        }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
-    });
+            return;
+        }
+
+        if (!download.finished) { res.status(400).send('Audio file is not ready for download.'); return; }
+
+        res.sendFile(download.outputPath, (err) => {
+            setTimeout(() => {
+                unlinkPath(download.videoDownloadPath);
+                unlinkPath(download.audioDownloadPath);
+                unlinkPath(download.outputPath);
+                downloadsMP4.delete(token);
+            }, parseInt(process.env.YTDL_CLEAR_AFTER_DOWNLOAD_TIME) * 60000);
+        });
+    }
+    
+    else {
+        res.status(404).send('Invalid type.');
+    }
+    
 });
 
 /**
