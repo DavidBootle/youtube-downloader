@@ -15,7 +15,6 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { /* options */ });
 
 app.use("/static", express.static('public'));
-app.use("/favicon.ico", express.static('favicon.ico'));
 app.use(express.json());
 
 // wipe the temp folder when starting up
@@ -31,6 +30,10 @@ fs.readdir(process.env.YTDL_PATH, (err, files) => {
 app.get( "/", (req, res) => {
     // send the home page
     res.sendFile(path.join(__dirname, '../html/index.html'));
+});
+
+app.get( "/favicon.ico", (req, res) => {
+    res.sendFile(path.join(__dirname, "../favicon.ico"));
 });
 
 app.get( "/convert", (req, res) => {
