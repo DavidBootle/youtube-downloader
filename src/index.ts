@@ -1,7 +1,7 @@
 import express, { application } from 'express';
 import path from 'path';
 import ffmpeg from 'ffmpeg';
-import ytdl from 'ytdl-core';
+const ytdl = require("ytdl-core");
 import { v4 as uuid } from 'uuid';
 import fs from 'fs';
 import { createServer } from "http";
@@ -305,7 +305,7 @@ app.get( "/api/info/video", async (req, res) => {
     if (!youtubeURL) { res.status(400).send("'url' parameter is required."); return; }
 
     // get video info
-    const vidInfo: ytdl.videoInfo = await ytdl.getInfo(youtubeURL);
+    const vidInfo = await ytdl.getInfo(youtubeURL);
 
     // find necessary video information
     const vidName: string = vidInfo.videoDetails.title;

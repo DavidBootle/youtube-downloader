@@ -1,4 +1,4 @@
-import ytdl from 'ytdl-core';
+const ytdl = require("ytdl-core");
 import fs, { stat } from 'fs';
 import { Readable } from 'stream';
 import { Server } from "socket.io";
@@ -73,7 +73,7 @@ class Download {
      * @param youtubeURL The url of the youtube video to download.
      * @param options The filter to use for the download.
      */
-    startDownload(youtubeURL: string, options: ytdl.downloadOptions) {
+    startDownload(youtubeURL: string, options: any) {
         try {
             // create write stream
             this.writeStream = fs.createWriteStream(this.downloadPath);
@@ -413,7 +413,7 @@ export class MP4Conversion extends Conversion {
 
         // start the audio and video downloads
         this.audio.startDownload(this.youtubeUrl, { quality: 'highestaudio' });
-        this.video.startDownload(this.youtubeUrl, { filter: format => format.quality == this.quality && format.container == 'mp4' });
+        this.video.startDownload(this.youtubeUrl, { filter: (format: { quality: string; container: string; }) => format.quality == this.quality && format.container == 'mp4' });
     }
 
     /**
